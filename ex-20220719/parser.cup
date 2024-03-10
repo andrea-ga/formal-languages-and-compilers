@@ -1,0 +1,176 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+parser code 	{:
+
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+    
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos + position)).value);
+    }
+:};
+
+
+//////////////////////////////////
+///// SYMBOLS DECLARATION
+/////////////////////////////////
+
+terminal TOKEN1, TOKEN2, SC, SEP, START_WORD, MINUS, BATTERY_WORD, KWH_WORD, FUEL_WORD, 
+            LITERS_WORD, PLUS_WORD, STAR_WORD, MAX_WORD, OB, CB, C, MOD_WORD, USE_WORD, DO_WORD, DONE_WORD, KM_WORD, UNITSKM_WORD;
+terminal Float RNUMBER;
+terminal String QSTRING;
+
+non terminal prog, header, run_section, token1l;
+non terminal Float[] sta, commandl, command, mod, use, cons;
+non terminal Float battery_ass, fuel_ass, exp, max, exp_list;
+non terminal String fu, ba;
+
+precedence left PLUS_WORD;
+precedence left STAR_WORD;
+
+//////////////////////////////////
+///// GRAMMAR
+/////////////////////////////////
+
+start with prog;
+
+prog ::= header SEP run_section;
+
+header ::= token1l | 
+           token1l TOKEN2 SC token1l TOKEN2 SC token1l |
+           token1l TOKEN2 SC token1l TOKEN2 SC token1l TOKEN2 SC token1l ;
+token1l ::= token1l TOKEN1 SC | ;
+
+//RUN_SECTION
+
+run_section ::= sta commandl;
+
+commandl ::= commandl command command | command command command command;
+
+sta ::= START_WORD battery_ass:x MINUS fuel_ass:y SC
+            {: RESULT = new Float[2];
+               RESULT[0] = x;
+               RESULT[1] = y;
+               System.out.println("battery=" + RESULT[0] + " " + "fuel=" + RESULT[1]);  :}
+        | START_WORD fuel_ass:y MINUS battery_ass:x SC
+            {: RESULT = new Float[2];
+               RESULT[0] = x;
+               RESULT[1] = y;
+               System.out.println("battery=" + RESULT[0] + " " + "fuel=" + RESULT[1]);  :}
+        | START_WORD fuel_ass:y SC
+            {: RESULT = new Float[2];
+               RESULT[0] = 100.0f;
+               RESULT[1] = y;
+               System.out.println("battery=" + RESULT[0] + " " + "fuel=" + RESULT[1]);  :}
+        | START_WORD battery_ass:x SC
+            {: RESULT = new Float[2];
+               RESULT[0] = x;
+               RESULT[1] = 100.0f;
+               System.out.println("battery=" + RESULT[0] + " " + "fuel=" + RESULT[1]);  :}
+        | START_WORD SC
+            {: RESULT = new Float[2];
+               RESULT[0] = 100.0f;
+               RESULT[1] = 100.0f;
+               System.out.println("battery=" + RESULT[0] + " " + "fuel=" + RESULT[1]);  :};
+
+battery_ass ::= BATTERY_WORD exp:x KWH_WORD
+                {: RESULT = x; :};
+
+fuel_ass ::= FUEL_WORD exp:x LITERS_WORD
+                {: RESULT = x; :};
+
+exp ::= RNUMBER:x
+            {: RESULT = x; :}
+        | max:x
+            {: RESULT = x; :}
+        | exp:x PLUS_WORD exp:y
+            {: RESULT = x + y; :}
+        | exp:x STAR_WORD exp:y
+            {: RESULT = x * y; :}
+        ;
+
+max ::= MAX_WORD OB exp_list:x CB
+        {:  RESULT = x; :};
+
+exp_list ::= exp_list:act_max C exp:x
+            {: if(x > act_max)
+                RESULT = x;
+               else
+                RESULT = act_max; :}
+            | exp:x
+            {: RESULT = x; :};
+
+command ::= mod:res SC 
+             {: RESULT = res; :}
+            | use:res SC
+             {: RESULT = res; :};
+
+mod ::= MOD_WORD FUEL_WORD fu:type exp:x
+            {: Float[] init = (Float[])parser.stack(-4);
+               Float[] newValues = new Float[2];
+               
+               newValues[0] = init[0];
+               newValues[1] = init[1] + x;
+                
+               System.out.println("battery=" + newValues[0] + " fuel=" + newValues[1]);
+               RESULT = newValues; :}
+        | MOD_WORD BATTERY_WORD ba:type exp:x
+            {: Float[] init = (Float[])parser.stack(-4);
+               Float[] newValues = new Float[2];
+               
+               newValues[0] = init[0] + x;
+               newValues[1] = init[1];
+                
+               System.out.println("battery=" + newValues[0] + " fuel=" + newValues[1]);
+               RESULT = newValues; :} ;
+
+use ::= USE_WORD FUEL_WORD fu:type DO_WORD cons:x DONE_WORD
+            {: RESULT = x; :}
+        | USE_WORD BATTERY_WORD ba:type DO_WORD cons:x DONE_WORD
+            {: RESULT = x; :} ;
+
+fu ::= {: RESULT = new String("FUEL"); :} ;
+ba ::= {: RESULT = new String("BATTERY"); :} ;
+
+cons ::= cons:values exp:x KM_WORD exp:y UNITSKM_WORD SC
+            {: String power_type = (String)parser.stack(-7);
+               Float[] newValues = new Float[2];
+               
+               if(power_type.equals("BATTERY")) {
+                    newValues[0] = values[0] - (x*y);
+                    newValues[1] = values[1];
+               } else if(power_type.equals("FUEL")) {
+                    newValues[0] = values[0];
+                    newValues[1] = values[1] - (x*y);
+               }
+               
+               System.out.println("battery=" + newValues[0] + " fuel=" + newValues[1]);
+               RESULT = newValues; :} 
+        | exp:x KM_WORD exp:y UNITSKM_WORD SC
+            {: Float[] init = (Float[])parser.stack(-9);
+               String power_type = (String)parser.stack(-6);
+               Float[] newValues = new Float[2];
+               
+               if(power_type.equals("BATTERY")) {
+                    newValues[0] = init[0] - (x*y);
+                    newValues[1] = init[1];
+               } else if(power_type.equals("FUEL")) {
+                    newValues[0] = init[0];
+                    newValues[1] = init[1] - (x*y);
+               }
+               
+               System.out.println("battery=" + newValues[0] + " fuel=" + newValues[1]);
+               RESULT = newValues; :} ;

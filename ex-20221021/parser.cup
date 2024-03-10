@@ -1,0 +1,167 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+init with {:
+    table = new HashMap<String, Boolean>(); //<variable> | bool_value
+
+    //IF I NEED TO PRINT ANYTHING AT THE BEGINNING I CAN PUT IT HERE
+:};
+
+parser code {:
+    public HashMap<String, Boolean> table;
+
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+:};
+
+/*
+action code {:
+:};
+*/
+      
+terminal SEP, SC, TOKEN1, TOKEN2, TOKEN3, EQ, OB, CB, C, 
+            OR_WORD, AND_WORD, NOT_WORD, T_WORD, F_WORD, FZAND_WORD, CMP_WORD, WITH_WORD, PRINT_WORD, OS, CS;
+terminal String QSTRING, CVAR;
+
+non terminal prog, header, commands, tokenl, commandsl, command, assignment, compare, actions_list, action_obj, print, NT0;
+non terminal Boolean bool_exp, operand, fz_and;
+non terminal ArrayList<Boolean> bool_exp_list;
+
+//lower to higher
+precedence left OR_WORD, AND_WORD;
+precedence left NOT_WORD;
+
+start with prog;
+
+prog ::= header SEP commands;
+
+/////////////////////////////////////////////////////////
+//HEADER
+/////////////////////////////////////////////////////////
+
+header ::= tokenl |
+           tokenl TOKEN2 SC tokenl |
+           tokenl TOKEN2 SC tokenl TOKEN2 SC tokenl TOKEN2 SC tokenl TOKEN2 SC ;
+
+tokenl ::= tokenl TOKEN1 SC | tokenl TOKEN3 SC |  ;
+
+/////////////////////////////////////////////////////////
+//COMMANDS
+/////////////////////////////////////////////////////////
+
+commands ::= commandsl |  ;
+
+commandsl ::= commandsl command command | command command command command ;
+
+command ::= assignment | compare ;
+
+assignment ::= CVAR:variable EQ bool_exp:val SC
+{:
+    parser.table.put(variable, val);
+    System.out.print(variable + " ");
+    if(val)
+        System.out.println("T");
+    else
+        System.out.println("F");
+:} ;
+
+compare ::= CMP_WORD bool_exp:val actions_list ;
+
+actions_list ::= actions_list action_obj | NT0 action_obj ;
+
+NT0 ::= {: :} ;
+
+action_obj ::= WITH_WORD bool_exp:val OS print CS ;
+
+print ::= PRINT_WORD OB QSTRING:word CB SC 
+{:
+    boolean exp1 = (Boolean)parser.stack(-6);
+    boolean exp2 = (Boolean)parser.stack(-9);
+
+    if(exp1 == exp2)
+        System.out.println(word);
+:} ;
+
+bool_exp ::= bool_exp:val1 OR_WORD bool_exp:val2
+{:
+    boolean res = (Boolean)val1 || (Boolean)val2;
+    RESULT = new Boolean(res);
+:}
+| bool_exp:val1 AND_WORD bool_exp:val2
+{:
+    boolean res = (Boolean)val1 && (Boolean)val2;
+    RESULT = new Boolean(res);
+:}
+| NOT_WORD bool_exp:val 
+{:
+    boolean res = !(Boolean)val;
+    RESULT = new Boolean(res);
+:}
+| OB bool_exp:val CB
+{:
+    RESULT = new Boolean(val);
+:} 
+| operand:val
+{:
+    RESULT = new Boolean(val);
+:} ;
+
+operand ::= T_WORD
+{:
+    RESULT = new Boolean(true);
+:}
+| F_WORD
+{:
+    RESULT = new Boolean(false);
+:} 
+| CVAR:variable
+{:
+    boolean res = (Boolean)parser.table.get(variable);
+    RESULT = new Boolean(res);
+:}
+| fz_and:val
+{:
+    RESULT = new Boolean(val);
+:} ;
+
+fz_and ::= FZAND_WORD OB bool_exp_list:list CB
+{:
+    boolean res = true;
+
+    for(Boolean b : list) {
+        res = res && b;
+
+        if(!res)
+            break;
+    }
+
+    RESULT = new Boolean(res);
+:} ;
+
+bool_exp_list ::= bool_exp_list:list C bool_exp:val
+{:
+    list.add(val);
+    RESULT = list;
+:}
+| bool_exp:val
+{:
+    RESULT = new ArrayList<Boolean>();
+    RESULT.add(val);
+:} ;

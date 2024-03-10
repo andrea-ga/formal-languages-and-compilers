@@ -1,0 +1,158 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+init with {:
+    table = new HashMap<String, HashMap<String, Integer>>(); //<type> | (room_name, size)
+
+    //IF I NEED TO PRINT ANYTHING AT THE BEGINNING I CAN PUT IT HERE
+:};
+
+parser code {:
+    public HashMap<String, HashMap<String, Integer>> table;
+
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+:};
+
+/*
+action code {:
+:};
+*/
+ 
+terminal SEP, SC, TOKEN1, TOKEN2, TOKEN3, HOUSE_WORD, START_WORD, END_WORD, C, IF_WORD, THEN_WORD, FI_WORD,
+            OR_WORD, AND_WORD, NOT_WORD, OB, CB, DEQ, D, PRINT_WORD;
+terminal String QSTRING;
+terminal Integer UINT;
+terminal Float RNUMBER;
+
+non terminal prog, header, houses, preferences, tokenl, house, command, print_list, print, NT0;
+non terminal Object[] room;
+non terminal HashMap<String, Integer> room_list;
+non terminal Boolean bool_exp, operand;
+non terminal Integer room_ref;
+
+//LOWER TO HIGHER
+precedence left AND_WORD, OR_WORD;
+precedence left NOT_WORD;
+
+start with prog;
+
+prog ::= header SEP houses SEP preferences;
+
+/////////////////////////////////////////////////////////
+//HEADER
+/////////////////////////////////////////////////////////
+
+header ::= tokenl TOKEN1 SC tokenl TOKEN2 SC tokenl |
+           tokenl TOKEN2 SC tokenl TOKEN1 SC tokenl ;
+
+tokenl ::= tokenl TOKEN3 SC | ;
+
+/////////////////////////////////////////////////////////
+//HOUSES
+/////////////////////////////////////////////////////////
+
+houses ::= houses house house | house house ;
+
+house ::= HOUSE_WORD QSTRING:house_type START_WORD room_list:tab END_WORD
+{:
+    parser.table.put(house_type, tab);
+:} ;
+
+room_list ::= room_list:tab C room:val
+{:
+    tab.put((String)val[0], (Integer)val[1]);
+    RESULT = tab;
+:}
+| room:val
+{:
+    HashMap<String, Integer> tab = new HashMap<String, Integer>();
+    tab.put((String)val[0], (Integer)val[1]);
+    RESULT = tab;
+:} ;
+
+room ::= QSTRING:room_name UINT:size
+{:
+    RESULT = new Object[2];
+    RESULT[0] = room_name;
+    RESULT[1] = size;
+:} ;
+
+/////////////////////////////////////////////////////////
+//PREFERENCES
+/////////////////////////////////////////////////////////
+
+preferences ::= preferences command |  ;
+
+command ::= IF_WORD bool_exp THEN_WORD print_list FI_WORD ;
+
+print_list ::= print_list print SC | NT0 print SC ;
+
+NT0 ::= {: :};
+
+print ::= PRINT_WORD QSTRING:word 
+{:
+    boolean res = (Boolean)parser.stack(-4);
+
+    if(res)
+        System.out.println(word);
+:} ;
+
+bool_exp ::= bool_exp:val1 OR_WORD bool_exp:val2
+{:
+    boolean res = val1 || val2;
+    RESULT = new Boolean(res);
+:}
+| bool_exp:val1 AND_WORD bool_exp:val2 
+{:
+    boolean res = val1 && val2;
+    RESULT = new Boolean(res);
+:}
+| NOT_WORD bool_exp:val
+{:
+    boolean res = !val;
+    RESULT = new Boolean(res); 
+:}
+| OB bool_exp:val CB
+{:
+    RESULT = new Boolean(val);
+:}
+| operand:val
+{:
+    RESULT = new Boolean(val); 
+:} ;
+
+operand ::= room_ref:val DEQ UINT:size 
+{:
+    boolean res = false;
+
+    if(val.intValue() == size.intValue())
+        res = true;
+
+    RESULT = new Boolean(res);
+:} ;
+
+room_ref ::= QSTRING:type D QSTRING:room_name 
+{:
+    HashMap<String, Integer> tab = parser.table.get(type);
+    int size = tab.get(room_name);
+
+    RESULT = new Integer(size);
+:} ;

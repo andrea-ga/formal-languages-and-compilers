@@ -1,0 +1,196 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+/*
+init with {:
+
+    //IF I NEED TO PRINT ANYTHING AT THE BEGINNING I CAN PUT IT HERE
+:};
+*/
+
+parser code {:
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+:};
+
+/*
+action code {:
+:};
+*/
+      
+terminal SEP, SC, TOKEN1, TOKEN2, TOKEN3, C, INS_WORD, CMP_WORD, SUM_WORD, OS, CS, PLUS, MINUS, DIV, STAR, OB, CB;
+terminal Integer UINT;
+
+non terminal prog, header, tokenl;
+non terminal Integer command, math_exp, exp1, exp2, exp3;
+non terminal Integer[] commands;
+non terminal ArrayList<Integer> exp_list;
+non terminal String NT0;
+
+start with prog;
+
+prog ::= header SEP commands;
+
+/////////////////////////////////////////////////////////
+//HEADER
+/////////////////////////////////////////////////////////
+
+header ::= tokenl TOKEN2 SC tokenl TOKEN1 SC tokenl |
+           tokenl TOKEN1 SC tokenl TOKEN2 SC tokenl |
+           tokenl TOKEN1 SC tokenl TOKEN2 SC tokenl TOKEN2 SC tokenl |
+           tokenl TOKEN2 SC tokenl TOKEN1 SC tokenl TOKEN2 SC tokenl |
+           tokenl TOKEN2 SC tokenl TOKEN2 SC tokenl TOKEN1 SC tokenl ;
+
+tokenl ::= tokenl TOKEN3 SC | ;
+
+/////////////////////////////////////////////////////////
+//COMMANDS
+/////////////////////////////////////////////////////////
+commands ::= commands:prev NT0 command:val1 SC command:val2 SC 
+{: 
+    RESULT = new Integer[2];
+    RESULT[0] = val2;
+    RESULT[1] = val1;
+:} 
+| command:val1 SC command:val2 SC command:val3 SC command:val4 SC
+{:
+    RESULT = new Integer[2];
+    RESULT[0] = val4;
+    RESULT[1] = val3;
+:} ;
+
+NT0 ::= {: RESULT = new String("NT0"); :} ;
+
+command ::= INS_WORD OS math_exp:val CS
+{:
+    System.out.println(val);
+    RESULT = new Integer(val);
+:} 
+| CMP_WORD OS math_exp:val1 CS C OS math_exp:val2 CS
+{:
+    int prev1 = 0;
+    int prev2 = 0;
+    int res = val2;
+
+    if(parser.stack(-8) != null && ((String)parser.stack(-8)).equals("NT0")) {
+        prev1 = (Integer)((Integer[])parser.stack(-9))[0];
+        prev2 = (Integer)((Integer[])parser.stack(-9))[1];
+    } else if(parser.stack(-10) != null && ((String)parser.stack(-10)).equals("NT0")) {
+        prev1 = (Integer)((Integer[])parser.stack(-11))[0];
+        prev2 = (Integer)((Integer[])parser.stack(-11))[1];
+    } else {
+        prev1 = (Integer)parser.stack(-9);
+        prev2 = (Integer)parser.stack(-11);
+    }
+
+    if(prev1 == prev2)
+        res = val1;
+
+    System.out.println(res);
+    RESULT = new Integer(res);
+:}
+| CMP_WORD OS math_exp:val CS
+{:
+    int prev1 = 0;
+    int prev2 = 0;
+    int res = 0;
+
+    if(parser.stack(-4) != null && ((String)parser.stack(-4)).equals("NT0")) {
+        prev1 = (Integer)((Integer[])parser.stack(-5))[0];
+        prev2 = (Integer)((Integer[])parser.stack(-5))[1];
+    } else if(parser.stack(-6) != null && ((String)parser.stack(-6)).equals("NT0")) {
+        prev1 = (Integer)((Integer[])parser.stack(-7))[0];
+        prev2 = (Integer)((Integer[])parser.stack(-7))[1];
+    } else {
+        prev1 = (Integer)parser.stack(-5);
+        prev2 = (Integer)parser.stack(-7);
+    }
+
+    if(prev1 == prev2)
+        res = val;
+
+    System.out.println(res);
+    RESULT = new Integer(res);
+:}
+| SUM_WORD exp_list:list
+{:
+    int sum = 0;
+
+    for (Integer i : list)
+        sum += (Integer)i;
+
+    System.out.println(sum);
+    RESULT = new Integer(sum);
+:} ;
+
+math_exp ::= exp1:val
+{:
+    RESULT = new Integer(val);
+:} ;
+
+exp1 ::= exp1:val1 PLUS exp2:val2
+{:
+    int res = val1 + val2;
+    RESULT = new Integer(res);
+:}
+| exp1:val1 MINUS exp2:val2
+{:
+    int res = val1 - val2;
+    RESULT = new Integer(res);
+:}
+| exp2:val
+{:
+    RESULT = new Integer(val);
+:} ;
+
+exp2 ::= exp2:val1 STAR exp3:val2
+{:
+    int res = val1 * val2;
+    RESULT = new Integer(res);
+:}
+| exp2:val1 DIV exp3:val2
+{:
+    int res = val1 / val2;
+    RESULT = new Integer(res);
+:}
+| exp3:val
+{:
+    RESULT = new Integer(val);
+:} ;
+
+exp3 ::= OB exp1:val CB
+{:
+    RESULT = new Integer(val);
+:}
+| UINT:val 
+{:
+    RESULT = new Integer(val); 
+:} ;
+
+exp_list ::= exp_list:list C OS math_exp:val CS
+{:
+    list.add(val);
+    RESULT = list;
+:}
+| OS math_exp:val CS
+{:
+    RESULT = new ArrayList<Integer>();
+    RESULT.add(val);
+:} ;

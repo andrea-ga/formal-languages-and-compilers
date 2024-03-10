@@ -1,0 +1,147 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+init with {:
+    table = new HashMap<String, HashMap<String, Float>>(); //<dress_name> | (prod_name, prod_cost)
+
+    //IF I NEED TO PRINT ANYTHING AT THE BEGINNING I CAN PUT IT HERE
+:};
+
+parser code {:
+    public HashMap<String, HashMap<String, Float>> table;
+
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+    
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+
+:};
+
+/*
+action code {:
+:};
+*/
+      
+terminal SEP, SC, TOKEN1, TOKEN2, TOKEN3, MINUS, C, EURO_WORD, PERC_WORD;
+terminal String QSTRING;
+terminal Integer UINT;
+terminal Float RNUMBER;
+
+non terminal prog, header, dresses, shopping, token1l, tokenl, dress, purchase;
+non terminal Object[] prod, purch_prod, purch_prod_list;
+non terminal HashMap<String, Float> prod_list;
+
+start with prog;
+
+prog ::= header SEP dresses SEP shopping;
+
+/////////////////////////////////////////////////////////
+//HEADER
+/////////////////////////////////////////////////////////
+
+header ::= token1l SC TOKEN2 SC TOKEN2 SC TOKEN2 SC |
+           token1l SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC |
+           token1l SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC TOKEN2 SC |
+           TOKEN2 SC tokenl TOKEN2 SC tokenl |
+           TOKEN2 SC tokenl ;
+
+token1l ::= token1l SC TOKEN1 SC TOKEN1 | TOKEN1 SC TOKEN1 SC TOKEN1 ;
+
+tokenl ::= tokenl TOKEN1 SC | tokenl TOKEN3 SC | ;
+
+/////////////////////////////////////////////////////////
+//DRESSES
+/////////////////////////////////////////////////////////
+
+dresses ::= dresses dress dress | dress dress dress ;
+
+dress ::= QSTRING:dress_name MINUS prod_list:tab SC 
+{:
+    parser.table.put(dress_name, tab);
+:} ;
+
+prod_list ::= prod_list:tab C prod:res
+{:
+    tab.put((String)res[0], (Float)res[1]);
+    RESULT = tab;
+:}
+| prod:res
+{:
+    HashMap<String, Float> tab = new HashMap<String, Float>();
+    tab.put((String)res[0], (Float)res[1]);
+    RESULT = tab;
+:} ;
+
+prod ::= UINT QSTRING:prod_name RNUMBER:prod_cost EURO_WORD
+{:
+    RESULT = new Object[2];
+    RESULT[0] = prod_name;
+    RESULT[1] = prod_cost;
+:} ;
+
+////////////////////////////////////////////////////////
+//SHOPPING
+////////////////////////////////////////////////////////
+
+shopping ::= shopping purchase SC | purchase SC ;
+
+purchase ::= QSTRING:dress_name UINT:perc PERC_WORD MINUS purch_prod_list:total
+{:
+    System.out.println("TOTAL: " + (Float)total[1] + " euro " + "N_PROD: " + (Integer)total[0]);
+:} ;
+
+// I NEED TO PRINT FROM FIRST TO LAST -> LEFT RECURSIVE
+// REMEMBER: purch_prod:res IS THE LAST ELEMENT THAT GET SCANNED BUT THE FIRST ELEMENT OF THE LIST (BECAUSE LEFT RECURSIVE)
+purch_prod_list ::= purch_prod_list:total C purch_prod:res
+{:
+    String dress_name = (String)parser.stack(-6);
+    Integer perc = (Integer)parser.stack(-5);
+
+    Float prod_cost = parser.table.get(dress_name).get((String)res[0]);
+    
+    Float price = prod_cost * (Integer)res[1] * perc / 100;
+    
+    System.out.println((String)res[0] + " " + price + " euro");
+
+    RESULT = new Object[2];
+    RESULT[0] = (Integer)total[0] + (Integer)res[1];    //I KEEP ADDING TO THE TOTAL QUANTITY
+    RESULT[1] = (Float)total[1] + price;              //I KEEP ADDING TO THE TOTAL PRICE
+:}
+| purch_prod:res 
+{:
+    String dress_name = (String)parser.stack(-4);
+    Integer perc = (Integer)parser.stack(-3);
+
+    Float prod_cost = parser.table.get(dress_name).get((String)res[0]);
+    
+    Float price = prod_cost * (Integer)res[1] * perc / 100;
+    System.out.println(dress_name); //PRINT THE DRESS NAME
+    
+    System.out.println((String)res[0] + " " + price + " euro");
+
+    RESULT = new Object[2];
+    RESULT[0] = (Integer)res[1];    //I START SAVING TOTAL QUANTITY
+    RESULT[1] = price;              //I START SAVING TOTAL PRICE
+:} ;
+
+purch_prod ::= QSTRING:prod_name UINT:quantity
+{:
+    RESULT = new Object[2];
+    RESULT[0] = prod_name;
+    RESULT[1] = quantity;
+ :} ;

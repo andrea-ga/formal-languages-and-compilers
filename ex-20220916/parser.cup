@@ -1,0 +1,142 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+init with {:
+    table = new HashMap<String, HashMap<String, Float>>();
+:};
+
+parser code 	{:
+
+    public static HashMap<String, HashMap<String, Float>> table;
+
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+    
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos + position)).value);
+    }
+:};
+
+
+//////////////////////////////////
+///// SYMBOLS DECLARATION
+/////////////////////////////////
+
+terminal TOKEN1, TOKEN2, TOKEN3, SC, SEP, C, KM_WORD, M_WORD, TO_WORD, ELEVATION_WORD, ROUTE_WORD, KCALKM_WORD, DD;
+terminal String QSTRING;
+terminal Float RNUMBER;
+terminal Integer UINT;
+
+non terminal prog, header, location_section, route_section, tokenl, distance, command, elevation_cmd, route_cmd, route_cmd2;
+non terminal HashMap<String, Float> list_of_pos;
+non terminal Object[] pos;
+non terminal Integer list_of_places, list_of_places2, place, NT0, NT1;
+non terminal Float pair_of_cities, list_of_pair_of_cities;
+
+//////////////////////////////////
+///// GRAMMAR
+/////////////////////////////////
+
+start with prog;
+
+prog ::= header SEP location_section SEP route_section;
+
+header ::= tokenl TOKEN3 SC tokenl TOKEN3 SC tokenl TOKEN3 SC tokenl TOKEN3 SC tokenl
+           | tokenl TOKEN3 SC tokenl
+           | tokenl;
+tokenl ::= tokenl TOKEN1 SC | tokenl TOKEN2 SC | ;
+
+//LOCATION_SECTION
+
+location_section ::= location_section distance | distance;
+
+distance ::= QSTRING:city list_of_pos:x SC
+                {: parser.table.put(city, x); :};
+
+list_of_pos ::= list_of_pos:tab C TO_WORD pos:x
+                 {: tab.put((String)x[0], (Float)x[1]);
+                    RESULT = tab; :}
+            | TO_WORD pos:x
+                {: HashMap<String, Float> tab = new HashMap<String, Float>();
+                   tab.put((String)x[0], (Float)x[1]);
+                   RESULT = tab;  :}; 
+
+pos ::= QSTRING:city RNUMBER:distance KM_WORD
+        {: RESULT = new Object[2];
+           RESULT[0] = city;
+           RESULT[1] = distance; :};
+
+//ROUTE_SECTION
+
+route_section ::= route_section command command | command command command command;
+
+command ::= elevation_cmd | route_cmd;
+
+elevation_cmd ::= ELEVATION_WORD list_of_places SC;
+
+
+//CON 3 places
+//place:y C list_of_places2
+            //place:x C list_of_places2
+                        //place:x
+//CON 4 places
+//place:y C list_of_places2
+            //place:x C list_of_places2
+                        //place:x C list_of_places2
+                                    //place:x
+
+//Inserisco place:y per ignorare il primo in lista che non ha un precedente
+list_of_places ::= place:y C list_of_places2:res
+                    {: System.out.println("ELEVATION: " + (res) + " m");
+                       RESULT = res; :};
+
+list_of_places2 ::= place:x C list_of_places2:res
+                {:  
+                    int pre = (Integer)parser.stack(-4);
+                    int diff = x - pre;
+
+                    RESULT = res + diff; :}
+                | place:x
+                {:  
+                    int pre = (Integer)parser.stack(-2);
+                    RESULT = x - pre; :} ;
+
+place ::= QSTRING:city UINT:elevation M_WORD
+            {: RESULT = elevation; :};
+
+
+route_cmd ::= ROUTE_WORD UINT:cal {: :} KCALKM_WORD DD NT0 list_of_pair_of_cities:res SC
+                {: System.out.println("Tot: " + res + " kcal"); :}
+                | ROUTE_WORD UINT:cal {: :} DD NT1 list_of_pair_of_cities:res SC
+                {: System.out.println("Tot: " + res + " kcal"); :};
+
+NT0 ::= {: RESULT = (Integer)parser.stack(-3); :};
+NT1 ::= {: RESULT = (Integer)parser.stack(-2); :};
+
+list_of_pair_of_cities ::= list_of_pair_of_cities:res C pair_of_cities:x
+                                {: int cal = (Integer)parser.stack(-3);
+                                   System.out.println(cal * x + " kcal");
+                                   
+                                   RESULT = res + cal * x; :}
+                            | pair_of_cities:x
+                                {: int cal = (Integer)parser.stack(-1);
+                                   System.out.println(cal * x + " kcal");
+                                   RESULT = cal * x; :};
+
+pair_of_cities ::= QSTRING:cityA QSTRING:cityB RNUMBER:modif
+                    {: HashMap<String, Float> tab1 = parser.table.get(cityA);
+                       Float distance = tab1.get(cityB);
+                       System.out.print(cityA + " " + cityB + " ");
+                       RESULT = distance * modif; :};

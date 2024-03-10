@@ -1,0 +1,184 @@
+import java_cup.runtime.*;
+import java.util.*;
+import java.io.*;
+
+init with {:
+    table = new HashMap<String, HashMap<String, Float>>(); //<food_category_name> | (food_name, kg_price)
+
+    //IF I NEED TO PRINT ANYTHING AT THE BEGINNING I CAN PUT IT HERE
+:};
+
+parser code {:
+    public HashMap<String, HashMap<String, Float>> table;
+
+    public void report_error(String message, Object info) {
+        StringBuffer m = new StringBuffer(message);
+        if (info instanceof Symbol) {
+            if (((Symbol)info).left != 1 && ((Symbol)info).right != 1) {
+                if (((Symbol)info).left != -1 && ((Symbol)info).right != -1) {
+                    int line = (((Symbol)info).left) + 1;
+                    int column = (((Symbol)info).right) + 1;
+                    m.append(" (line " + line + " column " + column + ")");
+                }
+            }
+            System.err.println(m);
+        }
+    }
+
+    /* Return semantic value of symbol in position (position) */
+    public Object stack(int position) {
+        return (((Symbol)stack.elementAt(tos+position)).value);
+    }
+:};
+
+/*
+action code {:
+:};
+*/
+      
+terminal SEP, SC, TOKEN1, TOKEN2, DD, OS, CS, C, EUROKG_WORD, D, KG_WORD;
+terminal String QSTRING;
+terminal Integer UINT;
+terminal Float RNUMBER;
+
+non terminal prog, header, food, recipes, tokenl, food_category, recipe, NT0, NT1, NT2;
+non terminal Object[] food_obj;
+non terminal HashMap<String, Float> food_list;
+non terminal Float ingredient;
+non terminal ArrayList<Float> ingredient_list;
+
+start with prog;
+
+prog ::= header SEP food {:
+    String cheap_food_name = "";
+    float cheap_price = -1;
+    String exp_food_name = "";
+    float exp_price = -1;
+
+    for(String k : parser.table.keySet()) {
+        HashMap<String, Float> tab = parser.table.get(k);
+
+        for(String k2 : tab.keySet()) {
+            float pkg = (Float)tab.get(k2);
+
+            if(cheap_price == -1 || cheap_price > pkg) {
+                cheap_food_name = k2;
+                cheap_price = pkg;
+            }
+
+            if(exp_price == -1 || exp_price < pkg) {
+                exp_food_name = k2;
+                exp_price = pkg;
+            }
+        }
+    }
+
+    System.out.print("Less expensive: " + cheap_food_name);
+    System.out.printf(" %.2f ", cheap_price);
+    System.out.println("EURO/kg");
+    System.out.print("More expensive: " + exp_food_name);
+    System.out.printf(" %.2f ", exp_price);
+    System.out.println("EURO/kg");
+    System.out.println("----");
+:} SEP recipes;
+
+/////////////////////////////////////////////////////////
+//HEADER
+/////////////////////////////////////////////////////////
+
+//NOT COMPLETELY CORRECT
+header ::= tokenl TOKEN1 SC tokenl |
+           TOKEN1 SC tokenl |
+           tokenl TOKEN1 SC ;
+
+tokenl ::= tokenl TOKEN2 SC | TOKEN2 SC ;
+
+/////////////////////////////////////////////////////////
+//FOOD
+/////////////////////////////////////////////////////////
+
+food ::= food food_category food_category |  ;
+
+food_category ::= QSTRING:food_category_name DD OS food_list:tab CS SC 
+{:
+    parser.table.put(food_category_name, tab);
+:};
+
+food_list ::= food_list:tab C food_obj:val
+{:
+    tab.put((String)val[0], (Float)val[1]);
+    RESULT = tab;
+:} 
+| food_obj:val
+{:
+    HashMap<String, Float> tab = new HashMap<String, Float>();
+    tab.put((String)val[0], (Float)val[1]);
+    RESULT = tab;
+:} ;
+
+food_obj ::= QSTRING:food_name DD RNUMBER:kg_price EUROKG_WORD
+{:
+    RESULT = new Object[2];
+    RESULT[0] = new String(food_name);
+    RESULT[1] = new Float(kg_price);
+:} ;
+
+/////////////////////////////////////////////////////////
+//RECIPES
+/////////////////////////////////////////////////////////
+
+recipes ::= recipes recipe |  ;
+
+recipe ::= UINT:number QSTRING:recipe_name {: System.out.println(recipe_name); :} DD ingredient_list:list SC
+{:
+    float tot = 0;
+
+    for(Float i : list)
+        tot += i;
+
+    System.out.print("TOT:");
+    System.out.printf(" %.2f ", tot);
+    System.out.println("EURO/kg");
+:}
+| UINT:number QSTRING:recipe_name {: System.out.println(recipe_name); :} NT0 ingredient_list:list SC
+{:
+    float tot = 0;
+
+    for(Float i : list)
+        tot += i;
+
+    System.out.print("TOT:");
+    System.out.printf(" %.2f ", tot);
+    System.out.println("EURO/kg");
+:} ;
+
+NT0 ::= {: :} ;
+
+ingredient_list ::= ingredient_list:list C ingredient:price
+{:
+    list.add(price);
+    RESULT = list;
+:}
+| NT1 NT2 ingredient:price
+{:
+    ArrayList<Float> list = new ArrayList<Float>();
+    list.add(price);
+    RESULT = list;
+:} ;
+
+NT1 ::= {: :} ;
+NT2 ::= {: :} ;
+
+ingredient ::= QSTRING:food_category_name D QSTRING:food_name RNUMBER:weight KG_WORD
+{:
+    HashMap<String, Float> tab = parser.table.get(food_category_name);
+    float kg_price = tab.get(food_name);
+    int number = (Integer)parser.stack(-10);
+
+    float price = kg_price * weight * number;
+    
+    System.out.print(food_name);
+    System.out.printf(" %.2f ", price);
+    System.out.println("EURO");
+    RESULT = new Float(price);
+:} ;
